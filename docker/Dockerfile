@@ -9,11 +9,11 @@ RUN apt-get update -qq \
   && apt-get clean \
   && rm -rf /var/lib/apt
 
-RUN python -mvenv venv && ./venv/bin/pip install --no-cache-dir --upgrade pip
+RUN python -m venv venv && ./venv/bin/pip install --no-cache-dir --upgrade pip
 
 COPY . .
 
-# Install package from source code, compile translations
+# Instala dependências, incluindo argostranslatefiles
 RUN ./venv/bin/pip install Babel==2.12.1 && ./venv/bin/python scripts/compile_locales.py \
   && ./venv/bin/pip install torch==2.2.0 --extra-index-url https://download.pytorch.org/whl/cpu \
   && ./venv/bin/pip install "numpy<2" \
@@ -26,7 +26,11 @@ FROM python:3.11.11-slim-bullseye
 ARG with_models=false
 ARG models=""
 
-RUN addgroup --system --gid 1032 libretranslate && adduser --system --uid 1032 libretranslate && mkdir -p /home/libretranslate/.local && chown -R libretranslate:libretranslate /home/libretranslate/.local
+RUN addgroup --system --gid 1032 libretranslate \
+  && adduser --system --uid 1032 libretranslate \
+  && mkdir -p /home/libretranslate/.local \
+  && chown -R libretranslate:libretranslate /home/libretranslate/.local
+
 USER libretranslate
 
 COPY --from=builder --chown=1032:1032 /app /app
@@ -34,14 +38,16 @@ WORKDIR /app
 
 COPY --from=builder --chown=1032:1032 /app/venv/bin/ltmanage /usr/bin/
 
+# Instala os modelos, se solicitado
 RUN if [ "$with_models" = "true" ]; then  \
-  # initialize the language models
   if [ ! -z "$models" ]; then \
-  ./venv/bin/python scripts/install_models.py --load_only_lang_codes "$models";   \
+    ./venv/bin/python scripts/install_models.py --load_only_lang_codes "$models"; \
   else \
-  ./venv/bin/python scripts/install_models.py;  \
-  fi \
+    ./venv/bin/python scripts/install_models.py; \
+  fi; \
   fi
 
 EXPOSE 5000
+
+# Inicia o servidor na porta correta (usando a variável de ambiente PORT)
 ENTRYPOINT [ "./venv/bin/libretranslate", "--host", "0.0.0.0", "--port", "env:PORT" ]
